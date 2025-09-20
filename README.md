@@ -10,24 +10,14 @@ $ poetry install
 $poetry shell
 ```
 
+-----------
+
+#### <u>Prepare data</u>
+
 ##### Transform training data from xlsx to csv
 
 ```
 $ python src/classifier/train_xlsx_2_csv.py --input resources/library.xlsx --output resources/library.csv --sheet Sheet1
-```
-
-##### Train the model
-
-Ex. (~6 mins to execute) using only m/z peaks:[29 30 31 43 44 55 57 60 73 82 91]
-
-```
-$ python src/classifier/train_sparse_multinomial_w_elasticnet.py --csv resources/library.csv --model resources/model_11_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 91 --quiet
-```
-
-Ex. (~7 mins to execute) using only m/z peaks:[29 30 31 43 44 55 57 60 73 82 84 91 115]
-
-```
-$ time python src/classifier/train_sparse_multinomial_w_elasticnet.py --csv resources/library.csv --model resources/model_13_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 84 91 115 --quiet
 ```
 
 ##### Transform prediction data from xlsx to csv 
@@ -36,19 +26,120 @@ $ time python src/classifier/train_sparse_multinomial_w_elasticnet.py --csv reso
 $ python src/classifier/predict_xlsx_2_csv.py --input resources/RusanenEtAl_synthetic.xlsx --output resources/RusanenEtAl_synthetic.csv --sheet X
 ```
 
-##### Predict with the generated model
+------------------
+
+#### <u>Train the model</u>
+
+##### Ex.  using only m/z peaks:[29 30 31 43 44 55 57 60 73 82 91]
+
+1. Using **L1** Regularization (Lasso):
+
+   ```
+   $ python src/classifier/ams_sparse_logreg_train.py --csv resources/library.csv --model resources/model_11_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 91 --penalty l1 --quiet 
+   ```
+
+   (~2 mins to execute)
+   
+
+
+   Penalizing the **absolute values** of coefficients:
+   $$
+   \text{penalty} = \lambda \sum_i |w_i|
+   $$
+   Encourages sparsity → many coefficients become exactly **0**.
+
+   
+
+2. Using **Elastic Net** Regularization:
+
+   ```
+   $ python src/classifier/ams_sparse_logreg_train.py --csv resources/library.csv --model resources/model_11_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 91 --penalty elasticnet --l1-ratios 0.5 0.75 0.9 1.0 --quiet
+   ```
+
+   (~7 mins to execute)
+
+
+   A **mixture** of L1 and L2 penalties:
+   $$
+   \text{penalty} = \lambda \left[ \alpha \sum_i |w_i| + (1-\alpha) \sum_i w_i^2 \right]
+   $$
+   where `α = l1_ratio`.
+
+   Balances **sparsity (L1)** and **stability (L2)**.
+
+   Especially useful when predictors (features) are correlated.
+
+--------------------
+
+#### <u>Predict with the generated model</u>
 
 ```
-$ python src/classifier/predict.py --csv resources/RusanenEtAl_synthetic.csv --model resources/model_11_feat.joblib --outdir resources/ 
+$ python src/classifier/ams_sparse_logreg_predict.py --csv resources/RusanenEtAl_synthetic.csv --model resources/model_11_feat.joblib --outdir resources/ 
 ```
 
-```
-$ python src/classifier/predict.py --csv resources/RusanenEtAl_synthetic.csv --model resources/model_13_feat.joblib --outdir resources/ 
-```
+----------------
 
 ##### Exit the poetry shell
 
 ```
 $ exit
 ```
+
+
+
+--------------------
+
+
+
+## Regularization strength in logistic regression
+
+In scikit-learn’s `LogisticRegression`, the regularization strength is controlled by the parameter **C**, which is the inverse of the penalty weight **λ**:
+
+\[
+\lambda = \frac{1}{C}
+\]
+
+- **Small C → large λ → strong regularization**  
+  Coefficients are shrunk more, and with L1 many will be forced to zero.  
+- **Large C → small λ → weak regularization**  
+  Coefficients are less constrained, closer to ordinary logistic regression.  
+
+### Grid of C values in this script
+
+For simplicity, this training script does not require the user to set λ directly.  
+Instead, it searches over a fixed grid of **C values**:
+\[
+C \in \{10^{-3}, \dotsc, 10^{2}\}
+\]
+
+That is, 21 values evenly spaced in log-space between \(10^{-3}\) and \(10^{2}\).  
+
+- This covers a wide range of regularization strengths (λ = 1/C from 1000 down to 0.01).  
+- The best C is chosen automatically by cross-validation.  
+
+
+
+### Elastic Net and `--l1-ratios`
+
+When using **Elastic Net regularization** (`--penalty elasticnet`), you must also provide a grid of **`l1_ratio` values** via the `--l1-ratios` argument:
+
+```bash
+--l1-ratios 0.5 0.75 0.9 1.0
+```
+
+So the `l1_ratio` controls the balance between L1 and L2 penalties:
+
+​	**l1_ratio = 1.0** → pure L1 (lasso): maximum sparsity, many coefficients forced to zero.
+
+​	**l1_ratio < 1.0** → mixture of L1 and L2: still sparse, but correlated features are kept more stable.
+
+Providing a grid (e.g. `0.5 0.75 0.9 1.0`) allows cross-validation to find the best tradeoff between sparsity and stability for the dataset
+
+
+
+✅ In short:
+
+* The user does not need to tune λ directly — The grid of C values is hardcoded for convenience, and the script picks the best one for the data.
+* For L1 penalty (--penalty l1), no extra arguments are needed.
+* For Elastic Net penalty (--penalty elasticnet), the user must also pass --l1-ratios with a list of candidate values to test.
 
