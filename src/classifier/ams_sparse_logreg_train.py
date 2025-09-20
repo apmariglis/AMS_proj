@@ -18,7 +18,6 @@ from sklearn.preprocessing import StandardScaler
 
 # ----------------------------- utilities ------------------------------------
 def to_int_if_numeric(col):
-    """Convert a column name that looks numeric (e.g., '29') to int (29)."""
     try:
         return int(col)
     except (ValueError, TypeError):
@@ -29,34 +28,19 @@ def pick_feature_columns(
     df: pd.DataFrame,
     explicit_features: Iterable[int] | None,
 ) -> Tuple[pd.DataFrame, List[int]]:
-    """
-    Decide which m/z columns to use.
-
-    Rules:
-    - You MUST provide --features; this function will use their intersection with the dataframe.
-    - No fallback to 'all m/z' and no built-in default list.
-
-    Returns:
-        (X_df, feature_list)
-    """
     if not explicit_features:
         raise ValueError(
             "You must provide --features with at least one m/z integer. "
-            "This script no longer has a built-in default or an 'all m/z' fallback."
+            "This script has no built-in defaults."
         )
 
-    # Convert columns that look numeric into integers for easy selection
     df = df.copy()
     df.columns = [to_int_if_numeric(c) for c in df.columns]
-
-    # Columns to exclude from features
     exclude = {"label", "where"}
 
-    # All candidate numeric m/z columns present
     numeric_cols = [
         c for c in df.columns if isinstance(c, (int, np.integer)) and c not in exclude
     ]
-
     feats = [int(f) for f in explicit_features]
     present = [mz for mz in feats if mz in numeric_cols]
     missing = [mz for mz in feats if mz not in numeric_cols]
@@ -70,7 +54,6 @@ def pick_feature_columns(
             f"The following requested m/z columns are missing from the CSV: {missing}. "
             f"Present features used: {present}"
         )
-
     return df[present], present
 
 
@@ -161,39 +144,25 @@ def _print_colored_classification_report(y_true, y_pred, labels):
     print("\nClassification report")
     print(head)
     for l in labels:
-        key = str(l)
-        m = rep.get(key, {})
-        prec = m.get("precision", 0.0)
-        rec = m.get("recall", 0.0)
-        f1 = m.get("f1-score", 0.0)
-        sup = int(m.get("support", 0))
-        fg = label_fg[l]
-        line = (
-            f"{fg}{str(l):<{name_w}}  "
-            f"{prec:>{col_w}.3f}  "
-            f"{rec:>{col_w}.3f}  "
-            f"{f1:>{col_w}.3f}  "
-            f'{sup:>{col_w}d}{ANSI["reset"]}'
+        m = rep.get(str(l), {})
+        prec, rec, f1, sup = (
+            m.get("precision", 0.0),
+            m.get("recall", 0.0),
+            m.get("f1-score", 0.0),
+            int(m.get("support", 0)),
         )
+        fg = label_fg[l]
+        line = f"{fg}{str(l):<{name_w}}  {prec:>{col_w}.3f}  {rec:>{col_w}.3f}  {f1:>{col_w}.3f}  {sup:>{col_w}d}{ANSI['reset']}"
         print(line)
     acc = rep.get("accuracy", 0.0)
-    wavg = rep.get("weighted avg", {})
-    mavg = rep.get("macro avg", {})
+    wavg, mavg = rep.get("weighted avg", {}), rep.get("macro avg", {})
     print()
     print(f'{ANSI["bold"]}{"accuracy":<{name_w}}{ANSI["reset"]}  {acc:>{col_w}.3f}')
     print(
-        f'{ANSI["bold"]}{"macro avg":<{name_w}}{ANSI["reset"]}  '
-        f'{mavg.get("precision",0):>{col_w}.3f}  '
-        f'{mavg.get("recall",0):>{col_w}.3f}  '
-        f'{mavg.get("f1-score",0):>{col_w}.3f}  '
-        f'{int(mavg.get("support",0)):>{col_w}d}'
+        f'{ANSI["bold"]}{"macro avg":<{name_w}}{ANSI["reset"]}  {mavg.get("precision",0):>{col_w}.3f}  {mavg.get("recall",0):>{col_w}.3f}  {mavg.get("f1-score",0):>{col_w}.3f}  {int(mavg.get("support",0)):>{col_w}d}'
     )
     print(
-        f'{ANSI["bold"]}{"weighted avg":<{name_w}}{ANSI["reset"]}  '
-        f'{wavg.get("precision",0):>{col_w}.3f}  '
-        f'{wavg.get("recall",0):>{col_w}.3f}  '
-        f'{wavg.get("f1-score",0):>{col_w}.3f}  '
-        f'{int(wavg.get("support",0)):>{col_w}d}'
+        f'{ANSI["bold"]}{"weighted avg":<{name_w}}{ANSI["reset"]}  {wavg.get("precision",0):>{col_w}.3f}  {wavg.get("recall",0):>{col_w}.3f}  {wavg.get("f1-score",0):>{col_w}.3f}  {int(wavg.get("support",0)):>{col_w}d}'
     )
 
 
@@ -202,15 +171,15 @@ def main(
     csv_path: str,
     model_out: str,
     explicit_features: Iterable[int] | None,
+    penalty: str,
+    l1_ratios: List[float] | None,
 ):
     # 1) Load
     df = pd.read_csv(csv_path)
-
-    # tolerate 'where' column and any other metadata columns
     if "label" not in df.columns:
         raise ValueError("CSV must contain a 'label' column.")
 
-    # Strict feature selection (no fallbacks)
+    # Strict feature selection
     X_df, used_mz = pick_feature_columns(df, explicit_features=explicit_features)
     print(
         f"Using {len(used_mz)} m/z features:",
@@ -218,112 +187,93 @@ def main(
         ("..." if len(used_mz) > 15 else ""),
     )
 
-    # Handle NaNs in features (treat missing intensities as 0 before fraction)
+    # Fractions (row-wise closure)
     X_raw = X_df.fillna(0.0)
-
-    # Row-wise fractional normalization (sum to 1; protect against zero rows)
     row_sums = X_raw.sum(axis=1).replace(0, np.nan)
     X_frac = X_raw.div(row_sums, axis=0).fillna(0.0)
     X = X_frac.values
 
-    # Labels
+    # Labels and class-check
     y = df["label"].astype(str).values
     class_counts = Counter(y)
     print("Class counts:", dict(class_counts))
 
     min_class = min(class_counts.values())
-    use_cv = min_class >= 2
-
-    if use_cv:
-        n_splits = min(5, min_class)
-        inner_cv = RepeatedStratifiedKFold(
-            n_splits=n_splits, n_repeats=10, random_state=42
+    if min_class < 2:
+        raise SystemExit(
+            "❌ Cannot run stratified cross-validation: at least one class has < 2 samples.\n"
+            "   Please provide at least 2 samples per class or remove singleton classes."
         )
 
-        pipe = make_pipeline(
-            StandardScaler(with_mean=True),
-            LogisticRegression(
-                penalty="elasticnet",
-                solver="saga",
-                class_weight="balanced",
-                max_iter=50000,
-                tol=1e-3,
-                warm_start=True,
-                random_state=42,
-            ),
-        )
+    # CV & model
+    n_splits = min(5, min_class)
+    inner_cv = RepeatedStratifiedKFold(n_splits=n_splits, n_repeats=10, random_state=42)
 
+    pipe = make_pipeline(
+        StandardScaler(with_mean=True),
+        LogisticRegression(
+            penalty=("elasticnet" if penalty == "elasticnet" else "l1"),
+            solver="saga",
+            class_weight="balanced",
+            max_iter=50000,
+            tol=1e-3,
+            warm_start=True,
+            random_state=42,
+        ),
+    )
+
+    if penalty == "elasticnet":
         param_grid = {
             "logisticregression__C": np.logspace(-3, 2, 21),
-            "logisticregression__l1_ratio": [0.7, 0.85, 0.95, 1.0],  # 1.0 == L1
+            "logisticregression__l1_ratio": (
+                l1_ratios if l1_ratios is not None else [0.7, 0.85, 0.95, 1.0]
+            ),
+        }
+    else:  # L1
+        param_grid = {
+            "logisticregression__C": np.logspace(-3, 2, 21),
         }
 
-        tuner = GridSearchCV(
-            pipe,
-            param_grid=param_grid,
-            scoring="neg_log_loss",
-            cv=inner_cv,
-            n_jobs=-1,
-            refit=True,
-        )
-        tuner.fit(X, y)
+    tuner = GridSearchCV(
+        pipe,
+        param_grid=param_grid,
+        scoring="neg_log_loss",
+        cv=inner_cv,
+        n_jobs=-1,
+        refit=True,
+    )
+    tuner.fit(X, y)
 
-        best = tuner.best_estimator_.named_steps["logisticregression"]
-        model = make_pipeline(
-            StandardScaler(with_mean=True),
-            LogisticRegression(
-                penalty="elasticnet",
-                solver="saga",
-                C=best.C,
-                l1_ratio=best.l1_ratio,
-                class_weight="balanced",
-                max_iter=50000,
-                tol=1e-3,
-                warm_start=True,
-                random_state=42,
-            ),
-        ).fit(X, y)
+    best = tuner.best_estimator_.named_steps["logisticregression"]
+    model = make_pipeline(
+        StandardScaler(with_mean=True),
+        LogisticRegression(
+            penalty=("elasticnet" if penalty == "elasticnet" else "l1"),
+            solver="saga",
+            C=best.C,
+            l1_ratio=(best.l1_ratio if penalty == "elasticnet" else None),
+            class_weight="balanced",
+            max_iter=50000,
+            tol=1e-3,
+            warm_start=True,
+            random_state=42,
+        ),
+    ).fit(X, y)
 
-        diag_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=123)
-        y_pred = cross_val_predict(model, X, y, cv=diag_cv, method="predict")
+    diag_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=123)
+    y_pred = cross_val_predict(model, X, y, cv=diag_cv, method="predict")
 
-        print("CV Accuracy (single partition):", accuracy_score(y, y_pred))
-        labels = sorted(class_counts.keys())
-        cm = confusion_matrix(y, y_pred, labels=labels)
-        _print_cm_colored(cm, labels)
-        _print_colored_classification_report(y, y_pred, labels)
-
-    else:
-        print("⚠️ Some classes have only 1 sample; fitting without CV (C=1.0).")
-        model = make_pipeline(
-            StandardScaler(with_mean=True),
-            LogisticRegression(
-                penalty="l1",
-                solver="saga",
-                C=1.0,
-                max_iter=10000,
-                random_state=42,
-            ),
-        ).fit(X, y)
-
-        y_pred = model.predict(X)
-        print("Training accuracy (no CV):", accuracy_score(y, y_pred))
-        labels = sorted(class_counts.keys())
-        cm = confusion_matrix(y, y_pred, labels=labels)
-        cm_df = pd.DataFrame(
-            cm,
-            index=[f"true:{lbl}" for lbl in labels],
-            columns=[f"pred:{lbl}" for lbl in labels],
-        )
-        print("Confusion matrix (rows=true, cols=pred):")
-        print(cm_df)
-        print(classification_report(y, y_pred, digits=3))
+    print("CV Accuracy (single partition):", accuracy_score(y, y_pred))
+    labels = sorted(class_counts.keys())
+    cm = confusion_matrix(y, y_pred, labels=labels)
+    _print_cm_colored(cm, labels)
+    _print_colored_classification_report(y, y_pred, labels)
 
     # 4) Persist
     try:
         import joblib
 
-        joblib.dump({"model": model, "used_mz": used_mz}, model_out)
+        joblib.dump({"model": model, "used_mz": used_mz, "penalty": penalty}, model_out)
         print(f"💾 Saved model (with feature list) to {model_out}")
     except Exception as e:
         print("Note: could not save model:", e)
@@ -332,14 +282,8 @@ def main(
 # ---------------------------------- CLI -------------------------------------
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument(
-        "--csv", default="training_data.csv", help="Path to CSV with spectra and labels"
-    )
-    ap.add_argument(
-        "--model",
-        required=True,
-        help="Path to save the trained model",
-    )
+    ap.add_argument("--csv", required=True, help="Path to CSV with spectra and labels")
+    ap.add_argument("--model", required=True, help="Path to save the trained model")
     ap.add_argument(
         "--features",
         nargs="+",
@@ -347,10 +291,43 @@ if __name__ == "__main__":
         required=True,
         help="Explicit list of m/z integers to use. No defaults; no fallbacks.",
     )
+
+    # Penalty is compulsory
+    ap.add_argument(
+        "--penalty",
+        choices=["l1", "elasticnet"],
+        required=True,
+        help="Sparse regularization: 'l1' (lasso) or 'elasticnet'.",
+    )
+
+    ap.add_argument(
+        "--l1-ratios",
+        type=float,
+        nargs="+",
+        default=None,
+        help=(
+            "Elastic-Net l1_ratio grid (required if --penalty elasticnet). "
+            "l1_ratio=1.0 is pure L1 (sparse feature selection). "
+            "Smaller values (e.g. 0.5–0.9) add stability with correlated features. "
+            "Example: --l1-ratios 0.5 0.75 0.9 1.0"
+        ),
+    )
+
     ap.add_argument(
         "--quiet", action="store_true", help="Suppress scikit-learn ConvergenceWarnings"
     )
     args = ap.parse_args()
+
+    # Validation
+    if args.penalty == "l1":
+        if args.l1_ratios is not None:
+            ap.error("--l1-ratios is only valid when --penalty elasticnet")
+    else:  # penalty == "elasticnet"
+        if args.l1_ratios is None:
+            ap.error(
+                "--l1-ratios is required when --penalty elasticnet "
+                "(e.g. --l1-ratios 0.5 0.75 0.9 1.0)"
+            )
 
     if args.quiet:
         warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -359,4 +336,6 @@ if __name__ == "__main__":
         args.csv,
         args.model,
         explicit_features=args.features,
+        penalty=args.penalty,
+        l1_ratios=args.l1_ratios if args.penalty == "elasticnet" else None,
     )
