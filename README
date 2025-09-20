@@ -1,3 +1,9 @@
+Install dependencies
+$ poetry install
+
+Start a shell within the virtual environment
+$poetry shell
+
 library.xls -> library.csv
 $ python src/classifier/train_xlsx_2_csv.py --input resources/library.xlsx --output resources/library.csv --sheet Sheet1
 
