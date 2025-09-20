@@ -38,14 +38,15 @@ $ python src/classifier/predict_xlsx_2_csv.py --input resources/RusanenEtAl_synt
    $ python src/classifier/ams_sparse_logreg_train.py --csv resources/library.csv --model resources/model_11_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 91 --penalty l1 --quiet 
    ```
 
-   (~2 mins to execute)
-   
+   *(~2 mins to execute)*
 
 
    Penalizing the **absolute values** of coefficients:
-   $$
-   \text{penalty} = \lambda \sum_i |w_i|
-   $$
+
+   <p align="center">
+   penalty = λ Σ |wᵢ|
+   </p>
+
    Encourages sparsity → many coefficients become exactly **0**.
 
    
@@ -56,13 +57,14 @@ $ python src/classifier/predict_xlsx_2_csv.py --input resources/RusanenEtAl_synt
    $ python src/classifier/ams_sparse_logreg_train.py --csv resources/library.csv --model resources/model_11_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 91 --penalty elasticnet --l1-ratios 0.5 0.75 0.9 1.0 --quiet
    ```
 
-   (~7 mins to execute)
-
+   *(~7 mins to execute)*
 
    A **mixture** of L1 and L2 penalties:
-   $$
-   \text{penalty} = \lambda \left[ \alpha \sum_i |w_i| + (1-\alpha) \sum_i w_i^2 \right]
-   $$
+
+   <p align="center">
+   penalty = λ [ α Σ |wᵢ| + (1 − α) Σ wᵢ² ]
+   </p>
+
    where `α = l1_ratio`.
 
    Balances **sparsity (L1)** and **stability (L2)**.
@@ -95,9 +97,9 @@ $ exit
 
 In scikit-learn’s `LogisticRegression`, the regularization strength is controlled by the parameter **C**, which is the inverse of the penalty weight **λ**:
 
-\[
-\lambda = \frac{1}{C}
-\]
+<p align="center">
+λ = 1 / C
+</p>
 
 - **Small C → large λ → strong regularization**  
   Coefficients are shrunk more, and with L1 many will be forced to zero.  
@@ -108,11 +110,12 @@ In scikit-learn’s `LogisticRegression`, the regularization strength is control
 
 For simplicity, this training script does not require the user to set λ directly.  
 Instead, it searches over a fixed grid of **C values**:
-\[
-C \in \{10^{-3}, \dotsc, 10^{2}\}
-\]
 
-That is, 21 values evenly spaced in log-space between \(10^{-3}\) and \(10^{2}\).  
+<p align="center">
+C ∈ { 10⁻³ , … , 10² }
+</p>
+
+That is, 21 values evenly spaced in log-space between 10⁻³ and 10².  
 
 - This covers a wide range of regularization strengths (λ = 1/C from 1000 down to 0.01).  
 - The best C is chosen automatically by cross-validation.  
