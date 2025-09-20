@@ -133,13 +133,10 @@ def main(input_csv: str, model_path: str, outdir: str):
 
     # 3) Figure out features to use
     if used_mz is None:
-        numeric_cols = [c for c in df.columns if isinstance(c, (int, np.integer))]
-        if not numeric_cols:
-            raise ValueError(
-                "Could not infer feature columns and the model file lacks 'used_mz'. "
-                "Please re-train with the refactored trainer (it saves 'used_mz')."
-            )
-        used_mz = sorted(numeric_cols)
+        raise ValueError(
+            "Model file lacks 'used_mz'. Re-train with the updated trainer so the "
+            "feature list is embedded in the .joblib."
+        )
 
     # 4) Build feature matrix matching training layout
     X_df = align_features(df, used_mz=used_mz, time_col=time_col)
