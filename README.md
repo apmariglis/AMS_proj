@@ -109,10 +109,10 @@ In scikit-learn’s `LogisticRegression`, the regularization strength is control
 ### Grid of C values in this script
 
 For simplicity, this training script does not require the user to set λ directly.  
-Instead, it searches over a fixed grid of **C values**:
+Instead, it searches over a fixed (*hardcoded*) grid of **C values**:
 
 <p align="center">
-C ∈ { 10⁻³ , … , 10² }
+C ∈ [ 10⁻³ , … , 10² ]
 </p>
 
 That is, 21 values evenly spaced in log-space between 10⁻³ and 10².  
@@ -132,9 +132,8 @@ When using **Elastic Net regularization** (`--penalty elasticnet`), you must als
 
 So the `l1_ratio` controls the balance between L1 and L2 penalties:
 
-​	**l1_ratio = 1.0** → pure L1 (lasso): maximum sparsity, many coefficients forced to zero.
-
-​	**l1_ratio < 1.0** → mixture of L1 and L2: still sparse, but correlated features are kept more stable.
+* **l1_ratio = 1.0** → pure L1 (lasso): maximum sparsity, many coefficients forced to zero.
+* **l1_ratio < 1.0** → mixture of L1 and L2: still sparse, but correlated features are kept more stable.
 
 Providing a grid (e.g. `0.5 0.75 0.9 1.0`) allows cross-validation to find the best tradeoff between sparsity and stability for the dataset
 
@@ -143,6 +142,6 @@ Providing a grid (e.g. `0.5 0.75 0.9 1.0`) allows cross-validation to find the b
 ✅ In short:
 
 * The user does not need to tune λ directly — The grid of C values is hardcoded for convenience, and the script picks the best one for the data.
-* For L1 penalty (--penalty l1), no extra arguments are needed.
-* For Elastic Net penalty (--penalty elasticnet), the user must also pass --l1-ratios with a list of candidate values to test.
+* For L1 penalty (`--penalty l1`), no extra arguments are needed.
+* For Elastic Net penalty (`--penalty elasticnet`), the user must also pass `--l1-ratios` with a list of candidate values to test.
 
