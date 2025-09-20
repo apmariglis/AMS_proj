@@ -162,7 +162,7 @@ def main(input_csv: str, model_path: str, outdir: str):
     with open(out_path, "w", newline="") as f:
         f.write(f"# model: {model_name}\n")
         out.to_csv(f, index=False)
-    print(f"✅ Saved predictions (with probabilities) to {out_path}")
+    print(f"Saved predictions (with probabilities) to {out_path}")
     print(f"    (first line contains model name: {model_name})")
     print(f"Classes: {', '.join(map(str, classes_))}")
 
