@@ -6,10 +6,13 @@ $ python src/classifier/predict_xlsx_2_csv.py --input resources/RusanenEtAl_synt
 
 
 Train the model
-(~5 mins)
+Ex. using only m/z peaks:[29 30 31 43 44 55 57 60 73 82 91]
+(~6 mins)
 $ time python src/classifier/train_sparse_multinomial_w_elasticnet.py --csv resources/library.csv --model resources/model_11_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 91 --quiet
-
+Ex. using only m/z peaks:[29 30 31 43 44 55 57 60 73 82 84 91 115]
+(~7 mins)
 $ time python src/classifier/train_sparse_multinomial_w_elasticnet.py --csv resources/library.csv --model resources/model_13_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 84 91 115 --quiet
 
 Predict
 $ python src/classifier/predict.py --csv resources/RusanenEtAl_synthetic.csv --model resources/model_11_feat.joblib --outdir resources/ 
+$ python src/classifier/predict.py --csv resources/RusanenEtAl_synthetic.csv --model resources/model_13_feat.joblib --outdir resources/ 
