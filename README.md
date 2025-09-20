@@ -7,7 +7,7 @@ $ poetry install
 ##### Start a shell within the virtual environment
 
 ```
-$poetry shell
+$ poetry shell
 ```
 
 -----------
