@@ -2,7 +2,7 @@
 name = "classifier"
 version = "0.1.0"
 description = ""
-authors = ["simospf <simos@proxyfoods.ai>"]
+authors = ["apmariglis <apmariglis@gmail.com>"]
 readme = "README.md"
 packages = [{include = "classifier", from = "src"}]
 
