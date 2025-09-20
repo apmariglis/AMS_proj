@@ -6,6 +6,8 @@ from typing import Iterable, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from logger import ConsoleLogger
+
 
 def to_int_if_numeric(col):
     """Convert a column name that looks numeric (e.g., '29') to int (29)."""
@@ -49,11 +51,15 @@ def align_features(
     df: pd.DataFrame,
     used_mz: Iterable[int],
     time_col: Optional[str] = None,
+    show_max: int = 10,
 ) -> pd.DataFrame:
     """
     Ensure df has exactly the used_mz columns in that order.
-    Missing mz are filled with zeros; extra columns are ignored.
+    Missing columns are zero-filled; extra columns are ignored.
+    Also surfaces where present columns have NaN values.
     """
+    log = ConsoleLogger()
+
     df = df.copy()
     df.columns = [to_int_if_numeric(c) for c in df.columns]
 
@@ -65,12 +71,53 @@ def align_features(
     present = {
         c for c in df.columns if isinstance(c, (int, np.integer)) and c not in drop_cols
     }
+
+    # Report completely missing columns (absent from CSV)
+    missing_cols = [mz for mz in used_mz if mz not in present]
+    if missing_cols:
+        log.warning(f"Missing required m/z columns (absent from CSV): {missing_cols}")
+        log.warning("   → These columns are zero-filled for all rows.")
+
+    # Report extra columns in the CSV (ignored)
+    extra_cols = sorted(present - set(used_mz))
+    if extra_cols:
+        log.info(f"Ignoring extra m/z columns: {extra_cols}")
+
+    # For columns that DO exist, surface where values are NaN
+    nan_info = {}
+    for mz in used_mz:
+        if mz in present:
+            nan_idx = df.index[df[mz].isna()].tolist()
+            if nan_idx:
+                if time_col and time_col in df.columns:
+                    # show row_index:time_value pairs for quick pinpointing
+                    examples = [f"{i}:{df.at[i, time_col]}" for i in nan_idx[:show_max]]
+                else:
+                    examples = nan_idx[:show_max]
+                nan_info[mz] = (len(nan_idx), examples)
+
+    if nan_info:
+        log.warning("Missing values (NaN) detected in present m/z columns:")
+        for mz, (count, examples) in nan_info.items():
+            example_str = ", ".join(map(str, examples))
+            tail = " …" if count > show_max else ""
+            if time_col and time_col in df.columns:
+                log.warning(
+                    f"   m/z {mz}: {count} rows (row:time examples: {example_str}{tail})"
+                )
+            else:
+                log.warning(
+                    f"   m/z {mz}: {count} rows (row indices: {example_str}{tail})"
+                )
+
+    # Build the feature matrix in the training order, zero-filling missing columns
     out_cols = []
     for mz in used_mz:
         if mz in present:
             out_cols.append(df[mz])
         else:
             out_cols.append(pd.Series(0.0, index=df.index, name=mz))
+
     X = pd.concat(out_cols, axis=1)
     X.columns = list(used_mz)
     return X
@@ -118,7 +165,15 @@ def make_output_filename(model_path: str, outdir: Path) -> Path:
     return outdir / f"predictions_{stem}.csv"
 
 
+def make_meta_filename(model_path: str, outdir: Path) -> Path:
+    """predictions_[model_name].meta.txt sidecar next to the CSV."""
+    stem = Path(model_path).stem
+    return outdir / f"predictions_{stem}.meta.txt"
+
+
 def main(input_csv: str, model_path: str, outdir: str):
+    logger = ConsoleLogger()
+
     # Ensure output directory exists
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -153,15 +208,18 @@ def main(input_csv: str, model_path: str, outdir: str):
         out.insert(0, time_col, df[time_col])
     out = pd.concat([out, proba_df], axis=1)
 
-    # 7) Save to predictions_[model_name].csv in the chosen outdir
+    # 7) Save CSV and a tiny sidecar .meta.txt
     out_path = make_output_filename(model_path, outdir)
     model_name = Path(model_path).name
-    with open(out_path, "w", newline="") as f:
-        f.write(f"# model: {model_name}\n")
-        out.to_csv(f, index=False)
-    print(f"Saved predictions (with probabilities) to {out_path}")
-    print(f"    (first line contains model name: {model_name})")
-    print(f"Classes: {', '.join(map(str, classes_))}")
+    out.to_csv(out_path, index=False)
+
+    meta_path = make_meta_filename(model_path, outdir)
+    with open(meta_path, "w", encoding="utf-8") as mf:
+        mf.write(f"model: {model_name}\n")
+
+    logger.info(f"Saved predictions (with probabilities) to {out_path}")
+    logger.info(f"Saved metadata to {meta_path}")
+    logger.info(f"Classes: {', '.join(map(str, classes_))}")
 
 
 if __name__ == "__main__":
