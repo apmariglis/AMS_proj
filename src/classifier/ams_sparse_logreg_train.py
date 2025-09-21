@@ -186,12 +186,12 @@ def main(
 
     if os.path.exists(model_out) and not overwritemodel:
         resp = (
-            input(f"⚠️ File '{model_out}' already exists. Overwrite? [y/N]: ")
+            input(f"File '{model_out}' already exists. Overwrite? [y/N]: ")
             .strip()
             .lower()
         )
         if resp not in {"y", "yes"}:
-            print("❌ Not overwriting. Exiting before training.")
+            print("Not overwriting. Exiting before training.")
             return
 
     # 1) Load full dataset
@@ -221,7 +221,7 @@ def main(
     min_class = min(class_counts.values())
     if min_class < 2:
         raise SystemExit(
-            "❌ Cannot run stratified cross-validation: at least one class has < 2 samples.\n"
+            "Cannot run stratified cross-validation: at least one class has < 2 samples.\n"
             "   Please provide at least 2 samples per class or remove singleton classes."
         )
 
@@ -265,6 +265,13 @@ def main(
     tuner.fit(X, y)
 
     best = tuner.best_estimator_.named_steps["logisticregression"]
+
+    # INFO: report best hyperparameters
+
+    print(f"Best C: {best.C}")
+    if penalty == "elasticnet":
+        print(f"Best l1_ratio: {best.l1_ratio}")
+
     model = make_pipeline(
         StandardScaler(with_mean=True),
         LogisticRegression(
@@ -294,7 +301,7 @@ def main(
         import joblib
 
         joblib.dump({"model": model, "used_mz": used_mz, "penalty": penalty}, model_out)
-        print(f"💾 Saved model (with feature list) to {model_out}")
+        print(f"Saved model (with feature list) to {model_out}")
     except Exception as e:
         print("Note: could not save model:", e)
 
