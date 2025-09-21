@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import warnings
 from collections import Counter
 from typing import Iterable, List, Tuple
@@ -169,12 +170,31 @@ def _print_colored_classification_report(y_true, y_pred, labels):
 # ------------------------------- training -----------------------------------
 def main(
     csv_path: str,
-    model_out: str,
+    outdir: str,
     explicit_features: Iterable[int] | None,
     penalty: str,
     l1_ratios: List[float] | None,
+    overwritemodel: bool,
 ):
-    # 1) Load
+    # ----------------- pre-check for output file -----------------
+    os.makedirs(outdir, exist_ok=True)
+    # We don't yet know num_features, so we'll re-load CSV minimally
+    df_tmp = pd.read_csv(csv_path, nrows=5)  # just to check columns
+    _, used_mz = pick_feature_columns(df_tmp, explicit_features=explicit_features)
+    fname = f"model_{len(used_mz)}feat_{penalty}.joblib"
+    model_out = os.path.join(outdir, fname)
+
+    if os.path.exists(model_out) and not overwritemodel:
+        resp = (
+            input(f"⚠️ File '{model_out}' already exists. Overwrite? [y/N]: ")
+            .strip()
+            .lower()
+        )
+        if resp not in {"y", "yes"}:
+            print("❌ Not overwriting. Exiting before training.")
+            return
+
+    # 1) Load full dataset
     df = pd.read_csv(csv_path)
     if "label" not in df.columns:
         raise ValueError("CSV must contain a 'label' column.")
@@ -283,7 +303,11 @@ def main(
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", required=True, help="Path to CSV with spectra and labels")
-    ap.add_argument("--model", required=True, help="Path to save the trained model")
+    ap.add_argument(
+        "--outdir",
+        required=True,
+        help="Folder to store the generated model file (will be created if missing)",
+    )
     ap.add_argument(
         "--features",
         nargs="+",
@@ -291,15 +315,12 @@ if __name__ == "__main__":
         required=True,
         help="Explicit list of m/z integers to use. No defaults; no fallbacks.",
     )
-
-    # Penalty is compulsory
     ap.add_argument(
         "--penalty",
         choices=["l1", "elasticnet"],
         required=True,
         help="Sparse regularization: 'l1' (lasso) or 'elasticnet'.",
     )
-
     ap.add_argument(
         "--l1-ratios",
         type=float,
@@ -312,9 +333,13 @@ if __name__ == "__main__":
             "Example: --l1-ratios 0.5 0.75 0.9 1.0"
         ),
     )
-
     ap.add_argument(
         "--quiet", action="store_true", help="Suppress scikit-learn ConvergenceWarnings"
+    )
+    ap.add_argument(
+        "--overwritemodel",
+        action="store_true",
+        help="Overwrite existing model file without asking",
     )
     args = ap.parse_args()
 
@@ -334,8 +359,9 @@ if __name__ == "__main__":
 
     main(
         args.csv,
-        args.model,
+        args.outdir,
         explicit_features=args.features,
         penalty=args.penalty,
         l1_ratios=args.l1_ratios if args.penalty == "elasticnet" else None,
+        overwritemodel=args.overwritemodel,
     )
