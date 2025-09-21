@@ -30,12 +30,47 @@ $ python src/classifier/predict_xlsx_2_csv.py --input resources/RusanenEtAl_synt
 
 #### <u>Train the model</u>
 
-##### Ex.  using only m/z peaks:[29 30 31 43 44 55 57 60 73 82 91]
+```
+$ python src/classifier/ams_sparse_logreg_train.py --csv <train_data>.csv --outdir <folder_name> --features <ints...> --penalty {l1, elasticnet} --quiet --overwritemodel
+```
+
+### Arguments
+
+- `--csv <path>`
+   Path to the CSV containing the training data
+- `--outdir <folder>`
+   Directory where the trained model will be saved. The filename of the model is, by convention, `model_<num_of_features>_<penalty_type>.joblib`
+   *The folder will be created if it does not exist.* 
+- `--features <ints...>`
+   Explicit list of m/z integers (columns) to use as features.
+   *There are no defaults or fallbacks; you must provide at least one.*
+- `--penalty {l1, elasticnet}`
+   Type of sparse regularization to apply:
+  - `l1`: Lasso, performs hard feature selection.
+  - `elasticnet`: Combination of L1 and L2. Requires also `--l1-ratios`.
+- `--l1-ratios <floats...>` *(only with `--penalty elasticnet`)*
+   Grid of `l1_ratio` values to search during tuning.
+   Example: `--l1-ratios 0.5 0.75 0.9 1.0`
+- `--quiet`
+   Suppress scikit-learn `ConvergenceWarning` messages.
+- `--overwritemodel`
+   Overwrite an existing model file without asking for confirmation. If this flag is not set and the output file already exists, the script will
+   prompt for confirmation before overwriting.
+
+------
+
+⚠️ **Note:** At least 2 samples per class are required, otherwise stratified cross-validation cannot run.
+
+
+
+##### Examples:  
+
+##### Using only m/z peaks:[29 30 31 43 44 55 57 60 73 82 91]
 
 1. Using **L1** Regularization (Lasso):
 
    ```
-   $ python src/classifier/ams_sparse_logreg_train.py --csv resources/library.csv --model resources/model_11_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 91 --penalty l1 --quiet 
+   $ python src/classifier/ams_sparse_logreg_train.py --csv resources/library.csv --outdir resources/ --features 29 30 31 43 44 55 57 60 73 82 91 --penalty l1 --quiet --overwritemodel
    ```
 
    *(~2 mins to execute)*
@@ -54,7 +89,7 @@ $ python src/classifier/predict_xlsx_2_csv.py --input resources/RusanenEtAl_synt
 2. Using **Elastic Net** Regularization:
 
    ```
-   $ python src/classifier/ams_sparse_logreg_train.py --csv resources/library.csv --model resources/model_11_feat.joblib --features 29 30 31 43 44 55 57 60 73 82 91 --penalty elasticnet --l1-ratios 0.5 0.75 0.9 1.0 --quiet
+   $ python src/classifier/ams_sparse_logreg_train.py --csv resources/library.csv --outdir resources/ --features 29 30 31 43 44 55 57 60 73 82 91 --penalty elasticnet --l1-ratios 0.5 0.75 0.9 1.0 --quiet --overwritemodel
    ```
 
    *(~7 mins to execute)*
@@ -70,6 +105,8 @@ $ python src/classifier/predict_xlsx_2_csv.py --input resources/RusanenEtAl_synt
    Balances **sparsity (L1)** and **stability (L2)**.
 
    Especially useful when predictors (features) are correlated.
+
+
 
 --------------------
 
